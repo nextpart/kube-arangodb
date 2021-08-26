@@ -56,6 +56,15 @@ func (a ActionType) Priority() ActionPriority {
 	}
 }
 
+// PriorityName returns the name of the priority of the action.
+func (a ActionType) PriorityName() string {
+	if a.Priority() == ActionPriorityHigh {
+		return "high"
+	}
+
+	return "normal"
+}
+
 const (
 	// ActionTypeIdle causes a plan to be recalculated.
 	ActionTypeIdle ActionType = "Idle"
@@ -279,6 +288,11 @@ func NewActionBuilder(group ServerGroup, memberID string) ActionBuilder {
 func (a Action) SetImage(image string) Action {
 	a.Image = image
 	return a
+}
+
+// IsStarted returns true if the action has been started already.
+func (a Action) IsStarted() bool {
+	return !a.StartTime.IsZero()
 }
 
 // AsPlan parse action list into plan

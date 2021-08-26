@@ -28,14 +28,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/arangodb/kube-arangodb/pkg/util/errors"
-	inspectorInterface "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector"
-
 	"github.com/rs/zerolog"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
+	"github.com/arangodb/kube-arangodb/pkg/metrics"
+	"github.com/arangodb/kube-arangodb/pkg/util/errors"
 	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
+	inspectorInterface "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector"
 )
 
 type planner interface {
@@ -43,8 +43,18 @@ type planner interface {
 	Set(deployment *api.DeploymentStatus, p api.Plan) bool
 }
 
-var _ planner = plannerNormal{}
-var _ planner = plannerHigh{}
+var (
+	_ planner = plannerNormal{}
+	_ planner = plannerHigh{}
+
+	currentPlanActions = metrics.MustRegisterGaugeVec("plan", "current",
+		"The current number of actions are being performed",
+		metrics.DeploymentName, "action_name", "action_priority")
+
+	totalPlanActions = metrics.MustRegisterCounterVec("plan", "total",
+		"The total number of performed actions",
+		metrics.DeploymentName, "action_name", "action_priority", metrics.Result)
+)
 
 type plannerNormal struct {
 }
@@ -128,7 +138,8 @@ func (d *Reconciler) executePlanStatus(ctx context.Context, cachedStatus inspect
 	return callAgain, nil
 }
 
-func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInterface.Inspector, log zerolog.Logger, statusPlan api.Plan) (newPlan api.Plan, callAgain bool, err error) {
+func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInterface.Inspector, log zerolog.Logger,
+	statusPlan api.Plan) (newPlan api.Plan, callAgain bool, err error) {
 	plan := statusPlan.DeepCopy()
 
 	for {
@@ -155,14 +166,29 @@ func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInte
 
 		done, abort, recall, err := d.executeAction(ctx, log, planAction, action)
 		if err != nil {
-			return nil, false, errors.WithStack(err)
+			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
+				planAction.Type.PriorityName(), metrics.Failed).Inc()
+
+			return plan, false, errors.WithStack(err)
 		}
 
 		if abort {
-			return nil, true, nil
+			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
+				planAction.Type.PriorityName(), metrics.Aborted).Inc()
+
+			return nil, false, nil
 		}
 
 		if done {
+			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
+				planAction.Type.PriorityName(), metrics.Success).Inc()
+
+			if plan[0].IsStarted() {
+				// If the action was started beforehand (not in this loop) then the metrics should be decreased.
+				currentPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
+					planAction.Type.PriorityName()).Dec()
+			}
+
 			if len(plan) > 1 {
 				plan = plan[1:]
 				if plan[0].MemberID == api.MemberIDPreviousAction {
@@ -191,7 +217,10 @@ func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInte
 				return nil, false, errors.WithStack(err)
 			}
 		} else {
-			if plan[0].StartTime.IsZero() {
+			if !plan[0].IsStarted() {
+				// The action has been started but it is not finished yet.
+				currentPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
+					planAction.Type.PriorityName()).Inc()
 				now := metav1.Now()
 				plan[0].StartTime = &now
 			}
@@ -201,8 +230,10 @@ func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInte
 	}
 }
 
-func (d *Reconciler) executeAction(ctx context.Context, log zerolog.Logger, planAction api.Action, action Action) (done, abort, callAgain bool, err error) {
-	if planAction.StartTime.IsZero() {
+func (d *Reconciler) executeAction(ctx context.Context, log zerolog.Logger, planAction api.Action,
+	action Action) (done, abort, callAgain bool, err error) {
+
+	if !planAction.IsStarted() {
 		// Not started yet
 		ready, err := action.Start(ctx)
 		if err != nil {

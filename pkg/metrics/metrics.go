@@ -39,6 +39,8 @@ const (
 	Success = "success"
 	// Failed is a label value used for failed actions
 	Failed = "failed"
+	// Aborted is a label value used for aborted actions.
+	Aborted = "aborted"
 )
 
 // MustRegisterCounter creates and registers a counter.

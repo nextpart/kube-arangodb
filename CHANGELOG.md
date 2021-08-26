@@ -5,6 +5,7 @@
 - Fix ArangoSync Liveness Prove
 - Allow runtime update of Sidecar images
 - Allow Agent recreation with preserved IDs
+- Add metrics for the plan actions
 
 ## [1.2.2](https://github.com/arangodb/kube-arangodb/tree/1.2.2) (2021-09-09)
 - Update 'github.com/arangodb/arangosync-client' dependency to v0.7.0
