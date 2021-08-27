@@ -47,13 +47,13 @@ var (
 	_ planner = plannerNormal{}
 	_ planner = plannerHigh{}
 
-	currentPlanActions = metrics.MustRegisterGaugeVec("plan", "current",
-		"The current number of actions are being performed",
-		metrics.DeploymentName, "action_name", "action_priority")
+	currentPlanActions = metrics.MustRegisterGaugeVec("plan_actions", "current",
+		"The current number of the plan actions are being performed",
+		metrics.DeploymentName, "group", "member", "name", "priority")
 
-	totalPlanActions = metrics.MustRegisterCounterVec("plan", "total",
-		"The total number of performed actions",
-		metrics.DeploymentName, "action_name", "action_priority", metrics.Result)
+	totalPlanActions = metrics.MustRegisterCounterVec("plan_actions", "total",
+		"The total number of performed plan actions",
+		metrics.DeploymentName, "group", "member", "name", "priority", metrics.Result)
 )
 
 type plannerNormal struct {
@@ -166,27 +166,27 @@ func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInte
 
 		done, abort, recall, err := d.executeAction(ctx, log, planAction, action)
 		if err != nil {
-			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
-				planAction.Type.PriorityName(), metrics.Failed).Inc()
+			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Group.AsRole(), planAction.MemberID,
+				planAction.Type.String(), planAction.Type.PriorityName(), metrics.Failed).Inc()
 
 			return plan, false, errors.WithStack(err)
 		}
 
 		if abort {
-			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
-				planAction.Type.PriorityName(), metrics.Aborted).Inc()
+			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Group.AsRole(), planAction.MemberID,
+				planAction.Type.String(), planAction.Type.PriorityName(), metrics.Aborted).Inc()
 
 			return nil, false, nil
 		}
 
 		if done {
-			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
-				planAction.Type.PriorityName(), metrics.Success).Inc()
+			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Group.AsRole(), planAction.MemberID,
+				planAction.Type.String(), planAction.Type.PriorityName(), metrics.Success).Inc()
 
-			if plan[0].IsStarted() {
+			if planAction.IsStarted() {
 				// If the action was started beforehand (not in this loop) then the metrics should be decreased.
-				currentPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
-					planAction.Type.PriorityName()).Dec()
+				currentPlanActions.WithLabelValues(d.context.GetName(), planAction.Group.AsRole(), planAction.MemberID,
+					planAction.Type.String(), planAction.Type.PriorityName()).Dec()
 			}
 
 			if len(plan) > 1 {
@@ -218,9 +218,9 @@ func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInte
 			}
 		} else {
 			if !plan[0].IsStarted() {
-				// The action has been started but it is not finished yet.
-				currentPlanActions.WithLabelValues(d.context.GetName(), planAction.Type.String(),
-					planAction.Type.PriorityName()).Inc()
+				// The action has been started in this loop, but it is not finished yet.
+				currentPlanActions.WithLabelValues(d.context.GetName(), planAction.Group.AsRole(), planAction.MemberID,
+					planAction.Type.String(), planAction.Type.PriorityName()).Inc()
 				now := metav1.Now()
 				plan[0].StartTime = &now
 			}
