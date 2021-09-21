@@ -49,11 +49,20 @@ func (a ActionType) String() string {
 // Priority returns plan priority
 func (a ActionType) Priority() ActionPriority {
 	switch a {
-	case ActionTypeMemberPhaseUpdate, ActionTypeMemberRIDUpdate, ActionTypeSetMemberCondition, ActionTypeBootstrapSetAgencyInfo:
+	case ActionTypeMemberPhaseUpdate, ActionTypeMemberRIDUpdate, ActionTypeSetMemberCondition:
 		return ActionPriorityHigh
 	default:
 		return ActionPriorityNormal
 	}
+}
+
+// PriorityName returns the name of the priority of the action.
+func (a ActionType) PriorityName() string {
+	if a.Priority() == ActionPriorityHigh {
+		return "high"
+	}
+
+	return "normal"
 }
 
 const (
@@ -165,8 +174,6 @@ const (
 	ActionTypeArangoMemberUpdatePodSpec ActionType = "ArangoMemberUpdatePodSpec"
 	// ActionTypeArangoMemberUpdatePodStatus updates pod spec
 	ActionTypeArangoMemberUpdatePodStatus ActionType = "ArangoMemberUpdatePodStatus"
-	// ActionTypeBootstrapSetAgencyInfo set agency info into state
-	ActionTypeBootstrapSetAgencyInfo ActionType = "BootstrapSetAgencyInfo"
 
 	// Runtime Updates
 	// ActionTypeRuntimeContainerImageUpdate updates container image in runtime
@@ -281,6 +288,11 @@ func NewActionBuilder(group ServerGroup, memberID string) ActionBuilder {
 func (a Action) SetImage(image string) Action {
 	a.Image = image
 	return a
+}
+
+// IsStarted returns true if the action has been started already.
+func (a Action) IsStarted() bool {
+	return !a.StartTime.IsZero()
 }
 
 // AsPlan parse action list into plan

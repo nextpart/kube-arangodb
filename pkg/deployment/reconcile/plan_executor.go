@@ -176,7 +176,7 @@ func (d *Reconciler) executePlan(ctx context.Context, cachedStatus inspectorInte
 			totalPlanActions.WithLabelValues(d.context.GetName(), planAction.Group.AsRole(), planAction.MemberID,
 				planAction.Type.String(), planAction.Type.PriorityName(), metrics.Aborted).Inc()
 
-			return nil, false, nil
+			return nil, true, nil
 		}
 
 		if done {
