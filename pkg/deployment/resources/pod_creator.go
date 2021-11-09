@@ -364,6 +364,18 @@ func (r *Resources) RenderPodForMember(ctx context.Context, cachedStatus inspect
 			cachedStatus:     cachedStatus,
 		}
 
+		// TODO test. It will be in the podCreator.Init function when master is merged to arangosync-v2.
+		if group == api.ServerGroupDBServers && spec.Sync.IsEnabled() && features.ArangoSyncV2().Enabled() {
+			masterJWTSecretName := spec.Sync.Authentication.GetJWTSecretName()
+			err := k8sutil.RunWithTimeout(ctx, func(ctxChild context.Context) error {
+				return k8sutil.ValidateTokenSecret(ctxChild, cachedStatus.SecretReadInterface(), masterJWTSecretName)
+			})
+			if err != nil {
+				return nil, errors.WithStack(errors.Wrapf(err, "Master JWT secret validation failed"))
+			}
+			memberPod.masterJWTSecretName = masterJWTSecretName
+		}
+
 		if err := memberPod.Validate(cachedStatus); err != nil {
 			return nil, errors.WithStack(errors.Wrapf(err, "Validation of pods resources failed"))
 		}
