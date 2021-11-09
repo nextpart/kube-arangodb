@@ -750,7 +750,7 @@ func (r *Resources) EnsurePods(ctx context.Context, cachedStatus inspectorInterf
 	deploymentStatus, _ := r.context.GetStatus()
 	var imageNotFoundOnce bool
 
-	if err := iterator.ForeachServerGroup(func(group api.ServerGroup, groupSpec api.ServerGroupSpec, status *api.MemberStatusList) error {
+	if err := iterator.ForeachServerGroup(func(group api.ServerGroup, _ api.ServerGroupSpec, status *api.MemberStatusList) error {
 		for _, m := range *status {
 			if m.Phase != api.MemberPhasePending {
 				continue
@@ -767,6 +767,13 @@ func (r *Resources) EnsurePods(ctx context.Context, cachedStatus inspectorInterf
 				// Template is missing, nothing to do
 				continue
 			}
+
+			// TODO test it is not necessary because arango member will not be created beforehand.
+			//if group == api.ServerGroupSyncWorkers && features.ArangoSyncV2().Enabled() {
+			//	// In this case ArangoSync workers should be launched as a sidecar to the DB server.
+			//	r.log.Info().Msgf("The Pod for ArangoSync worker is not created because it will work as a sidecar")
+			//	continue
+			//}
 
 			r.log.Warn().Msgf("Ensuring pod")
 
